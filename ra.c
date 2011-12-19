@@ -1,10 +1,6 @@
-#include <stdio.h>
-#include <stdlib.h>
-//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  2a02:6800:ff60:dead:: -t 1 -r 4294967295:4294967295:80:80:80 {NOTIMEOUT}
-/* 
- * to build it type: gcc -O2 -lpcap -o ra ra.c
- * to run it: ./ra -i interface -p prefix -l prefix_len (default 64)
- */
+
+
+//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef:: -t 1 -r 4294967295:4294967295:80:80:80 {NOTIMEOUT}
 /*
  * ----------------------------------------------------------------------------
  * "THE BEER-WARE LICENSE" (Revision 42):
@@ -13,7 +9,16 @@
  * this stuff is worth it, you can buy me a beer in return Borislav Nikolov
  * ----------------------------------------------------------------------------
  */
- 
+
+/* 
+ * to build it type: gcc -O2 -lpcap -lpthread -o ra ra.c
+ * to run it: ./ra -i interface -p prefix -l prefix_len (default 64)
+ */
+#include <stdio.h>
+#include <stdlib.h> 
+#include <stdint.h>
+#include <sys/types.h>
+#include <string.h> 
 #include <netinet/in.h>
 #include <netinet/ip6.h>
 #include <netinet/icmp6.h>
@@ -28,14 +33,20 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <sys/queue.h>
+#ifndef ETHER_ADDR_LEN
 #define ETHER_ADDR_LEN 6
+#endif
+
 #define CMP(a,b,len) (bcmp(a,b,len) == 0)
 #define COPY(a,b,len) bcopy(a,b,len)
 #define ICOPY(a,b) COPY(a,b,sizeof(struct in6_addr))
 #define ICMP(a,b) CMP(a,b,sizeof(struct in6_addr))
 #define ECOPY(a,b) COPY(a,b,ETHER_ADDR_LEN)
 #define ECMP(a,b) CMP(a,b,ETHER_ADDR_LEN)
+
+#ifndef __packed
 #define __packed __attribute__ ((__packed__))
+#endif
 
 #define P_ETH "%02x:%02x:%02x:%02x:%02x:%02x"
 #define P_ETHARG(addr) (u8) addr[0],(u8) addr[1],(u8) addr[2],(u8) addr[3],(u8) addr[4],(u8) addr[5]
@@ -231,7 +242,7 @@ int main(int ac, char *av[]) {
 	
 	if (ICMP(&g.prefix,&in6addr_any)) 
 		usage("need to specify valid ipv6 prefix");
-
+		
 	process_if(g.ifname);
 	init_go_and_die_cleanly();
 	return 0;

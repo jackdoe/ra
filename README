@@ -1,7 +1,7 @@
 *Work in progress*
 
 0. compile:
-  to build it type: gcc -O2 -lpcap -o ra ra.c
+  to build it type: gcc -O2 -lpcap -lpthread -o ra ra.c
   to run it: ./ra -i interface -p prefix -l prefix_len (default 64)
 1. usage:
 usage: ra -i ifname(em0) -l prefix_len(64) -p prefix -m mtu(1500) -f flags (read below) -r times(read below) -l advertise_interval(default 30 seconds)
