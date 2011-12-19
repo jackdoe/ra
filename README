@@ -36,6 +36,6 @@ available times: pi_valid_time:pi_preferred_time:ra_lifetime:ra_reachable:ra_ret
 		./ra -i eth0 -p $PREFIX
 	done
 
-	and just do inside your dhclient script
+	and just kill it inside your dhclient script
 		echo $PD > /etc/prefix_file_generated_by_dhclient_script_on_PD ; killall ra
 
