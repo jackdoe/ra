@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  dead:beef:dead:beef:: -t 1 -f "ra_managed ra_pref_high" -r 4294967295:4294967295:80:80:80 {NOTIMEOUT}
+//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  2a02:6800:ff60:dead:: -t 1 -r 4294967295:4294967295:80:80:80 {NOTIMEOUT}
 /* 
  * to build it type: gcc -O2 -lpcap -o ra ra.c
  * to run it: ./ra -i interface -p prefix -l prefix_len (default 64)
@@ -118,6 +118,7 @@ struct global {
 	u32 pi_preferred_time;
 	pthread_cond_t cond;
 	pthread_mutex_t cond_lock;
+	u32 verbose;
 	struct send_queue q;
 } g;
 
@@ -136,7 +137,7 @@ void generate_ra(u8 *edest);
 void init_go_and_die_cleanly(void);
 void ip_checksum(void *buf, size_t len);
 int ip_cksum_add(const void *buf, size_t len, int cksum);
-void usage(void);
+int usage(char *msg);
 int main(int ac, char *av[]) {
 	int ch,v;
 	bzero(&g,sizeof(g));
@@ -151,8 +152,11 @@ int main(int ac, char *av[]) {
 	g.ra_reachable = 60;
 	g.ra_retransmit = 60;
 	g.ifname = "em0";
-	while ((ch = getopt(ac, av, "i:p:lmh?t:f:r:")) != -1) {
+	while ((ch = getopt(ac, av, "i:p:lmh?t:f:r:v")) != -1) {
 		switch(ch) {
+		case 'v':
+			g.verbose++;
+		break;
 		case 'i':
 			g.ifname = strdup(optarg);
 		break;
@@ -160,14 +164,16 @@ int main(int ac, char *av[]) {
 			inet_pton(AF_INET6,optarg,&g.prefix);
 		break;
 		case 'l':
-			g.prefix_len = atoi(optarg);
+			v = atoi(optarg);
+			g.prefix_len = (v > 0 && v <= 64) ? v : usage("bad prefix len: must be > 0 and <= 64");
 		break;
 		case 'm': /* managed */
-			g.mtu = atoi(optarg);
+			v = atoi(optarg);
+			g.mtu = (v > 0) ? v : usage("bad mtu: must be > 0");
 		break;
 		case 't':
 			v = atoi(optarg);
-			g.generator_interval = (v > 0) ? v : g.generator_interval;
+			g.generator_interval = (v > 0) ? v : usage("bad generator interval: must be > 0");
 		break;
 		case 'r':
 			{
@@ -186,6 +192,8 @@ int main(int ac, char *av[]) {
 					valid(3,g.ra_reachable,"invalid ra_reachable");
 					valid(4,g.ra_retransmit,"invalid ra_retransmit");
 					#undef valid
+				} else {
+					usage("bad time option");
 				}
 			}
 		break;
@@ -216,13 +224,13 @@ int main(int ac, char *av[]) {
 		
 		case '?':
 		case 'h':
-			usage();
+			usage(NULL);
 		break;
 		}
 	}
 	
 	if (ICMP(&g.prefix,&in6addr_any)) 
-		SAYX(1,"need to specify valid ipv6 prefix");
+		usage("need to specify valid ipv6 prefix");
 
 	process_if(g.ifname);
 	init_go_and_die_cleanly();
@@ -280,9 +288,10 @@ void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) 
 	struct rs_pkt *rs = (struct rs_pkt *) sp;
 	if (rs->ip.ip6_nxt == IPPROTO_ICMPV6 && 
 	    rs->rs.nd_rs_hdr.icmp6_type == ND_ROUTER_SOLICIT) {
+	    	if (g.verbose)
+	    		_DETH(rs->eh);
 		generate_ra(rs->eh.ether_shost);
 	}
-//	_DETH(rs->eh);
 }
 
 void generate_ra(u8 *edest) {
@@ -406,7 +415,9 @@ int process_if(char *ifname) {
 	return 1;
 }
 
-void usage(void) {
+int usage(char *msg) {
+	if (msg)
+		_D("ERROR: %s\n",msg);
 	printf("ra -i ifname(em0) -l prefix_len(64) -p prefix -m mtu(1500) -f flags (read below) -r times(read below) -l advertise_interval(default 30 seconds)\n");
 	printf("so if you run ra -p dead:beef:dead:beef:: will run it with:\n");
 	printf("by default the parameters are: ra -i em0 -m 1500 -l 64 -p dead:beef:dead:beef:: -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60\n");
