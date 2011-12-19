@@ -1,6 +1,9 @@
 *Work in progress*
-0. usage:
-ERROR: need to specify valid ipv6 prefix [usage():/Users/jack/work/ra/ra.c:420]
+
+0. compile:
+  to build it type: gcc -O2 -lpcap -o ra ra.c
+  to run it: ./ra -i interface -p prefix -l prefix_len (default 64)
+1. usage:
 usage: ra -i ifname(em0) -l prefix_len(64) -p prefix -m mtu(1500) -f flags (read below) -r times(read below) -l advertise_interval(default 30 seconds)
 
 so if you run
