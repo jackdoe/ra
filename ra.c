@@ -38,7 +38,6 @@
 #include <ifaddrs.h>
 #include <arpa/inet.h>
 #include <pthread.h>
-#include <sys/queue.h>
 #ifndef ETHER_ADDR_LEN
 #define ETHER_ADDR_LEN 6
 #endif
@@ -51,7 +50,7 @@
 #define ECMP(a,b) CMP(a,b,ETHER_ADDR_LEN)
 
 #ifndef __packed
-#define __packed __attribute__ ((__packed__))
+#	define __packed __attribute__ ((__packed__))
 #endif
 
 #define P_ETH "%02x:%02x:%02x:%02x:%02x:%02x"
@@ -62,7 +61,33 @@
 	_D(fmt,##arg); 												\
 	exit(rc);													\
 } while(0);
+#ifndef ND_RA_FLAG_HA
+#	define ND_RA_FLAG_HA			0x20
+#endif
 
+#ifndef ND_RA_FLAG_MANAGED
+#	define ND_RA_FLAG_MANAGED		0x80
+#endif
+
+#ifndef ND_RA_FLAG_OTHER
+#	define ND_RA_FLAG_OTHER		0x40
+#endif
+
+#ifndef ND_RA_FLAG_RTPREF_HIGH
+#	define ND_RA_FLAG_RTPREF_HIGH  0x08 /* 00001000 */
+#endif
+
+#ifndef ND_RA_FLAG_RTPREF_LOW
+#	define ND_RA_FLAG_RTPREF_LOW   0x18 /* 00011000 */
+#endif
+
+#ifndef IPV6_VERSION
+#	define IPV6_VERSION			0x60
+#endif
+
+#ifndef IPV6_VERSION_MASK
+#	define IPV6_VERSION_MASK		0xf0
+#endif
 
 /* 
  * from libdnet's ip-util.c, read below for license
@@ -109,10 +134,11 @@ struct ra_pkt {
 
 struct sendit {
 	struct ra_pkt ra;
-	TAILQ_ENTRY(sendit) list;
+	struct sendit *next;
 };
 struct send_queue {
-	TAILQ_HEAD(,sendit) head;
+	struct sendit *head;
+	struct sendit *tail;
 	pthread_mutex_t lock;	
 };
 struct global {
@@ -137,24 +163,23 @@ struct global {
 	pthread_mutex_t cond_lock;
 	u32 verbose;
 	struct send_queue q;
-} g;
+};
+static struct global g;
+static u8 all_hosts_in6_addr[] = {0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01};
+static u8 all_multi_eth_addr[] = {0x33,0x33,0x00,0x00,0x00,0x01};
 
-u8 all_hosts_in6_addr[] = {0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01};
-u8 all_multi_eth_addr[] = {0x33,0x33,0x00,0x00,0x00,0x01};
-
-int process_if(char *ifname);
-void	pcap_callback(u_char *user, const struct pcap_pkthdr *h,const u_char *sp);
-void ip6_checksum(void *buf, size_t len);
-void *ra_listen(void *v);
-void *ra_send(void *v);
-void *ra_generator(void *v);
-void enqueue(struct sendit *packet);
-void process_queue(void);
-void generate_ra(u8 *edest);
-void init_go_and_die_cleanly(void);
-void ip_checksum(void *buf, size_t len);
-int ip_cksum_add(const void *buf, size_t len, int cksum);
-int usage(char *msg);
+static int process_if(char *ifname);
+static void pcap_callback(u_char *user, const struct pcap_pkthdr *h,const u_char *sp);
+static void *ra_listen(void *v);
+static void *ra_send(void *v);
+static void *ra_generator(void *v);
+static void enqueue(struct sendit *packet);
+static void process_queue(void);
+static void generate_ra(u8 *edest);
+static void init_go_and_die_cleanly(void);
+static int ip_cksum_add(const void *buf, size_t len, int cksum);
+static int usage(char *msg);
+static inline void q_append(struct send_queue *q, struct sendit *packet);
 int main(int ac, char *av[]) {
 	int ch,v;
 	bzero(&g,sizeof(g));
@@ -253,13 +278,12 @@ int main(int ac, char *av[]) {
 	init_go_and_die_cleanly();
 	return 0;
 }
-void init_go_and_die_cleanly(void) {
+static void init_go_and_die_cleanly(void) {
 	pthread_t t[3];
 	int i;
 	pthread_mutex_init(&g.q.lock, NULL);
 	pthread_mutex_init(&g.cond_lock,NULL);
 	pthread_cond_init(&g.cond,NULL);
-	TAILQ_INIT(&g.q.head);
 	if (pthread_create(&t[0],NULL,ra_listen,NULL)) 
 		SAYX(1,"pthread: failed to create thread");
 	if (pthread_create(&t[1],NULL,ra_send,NULL)) 
@@ -275,13 +299,13 @@ void init_go_and_die_cleanly(void) {
 	pthread_mutex_destroy(&g.cond_lock);
 	pthread_cond_destroy(&g.cond);
 }
-void *ra_listen(void *v) {
+static void *ra_listen(void *v) {
 	if (pcap_loop(g.cap, 0, pcap_callback, NULL) < 0)
 		SAYX(1,"pcap_loop(%s): %s", g.ifname, pcap_geterr(g.cap));
 	return NULL;
 }
 
-void *ra_send(void *v) {
+static void *ra_send(void *v) {
 	for(;;) {
 		process_queue();
 		pthread_mutex_lock(&g.cond_lock);
@@ -291,14 +315,14 @@ void *ra_send(void *v) {
 	return NULL;
 }
 
-void *ra_generator(void *v) {
+static void *ra_generator(void *v) {
 	for (;;) {
 		generate_ra(NULL);
 		sleep(g.generator_interval);
 	}
 	return NULL;
 }
-void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
+static void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
 	if (!sp || h->len < sizeof(struct rs_pkt))
 		return;
 		
@@ -311,7 +335,7 @@ void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) 
 	}
 }
 
-void generate_ra(u8 *edest) {
+static void generate_ra(u8 *edest) {
 	struct sendit *packet = malloc(sizeof(*packet));
 	if (!packet) {
 		_D("not enough mem to allocate: %lu bytes",sizeof(*packet));
@@ -376,27 +400,35 @@ void generate_ra(u8 *edest) {
 	enqueue(packet);
 }
 
-
-void enqueue(struct sendit *packet) {
+static inline void q_append(struct send_queue *q, struct sendit *packet) {
+	if (q->head == NULL)
+		q->head = packet;
+	else
+		q->tail->next = packet;
+	q->tail = packet;
+	packet->next = NULL;
+	
+}
+static void enqueue(struct sendit *packet) {
 	pthread_mutex_lock(&g.q.lock);
-	TAILQ_INSERT_TAIL(&g.q.head,packet,list);
+	q_append(&g.q,packet);
 	pthread_mutex_unlock(&g.q.lock);
-
+	
 	pthread_mutex_lock(&g.cond_lock);
 	pthread_cond_signal(&g.cond);
 	pthread_mutex_unlock(&g.cond_lock);
 }
-void process_queue(void) {
+static void process_queue(void) {
 	pthread_mutex_lock(&g.q.lock);
-	struct sendit *packet, *packet_temp;
-	TAILQ_FOREACH_SAFE(packet,&g.q.head,list,packet_temp) {
+	struct sendit *packet;
+	while ((packet = g.q.head) != NULL) {
 		pcap_inject(g.cap,&packet->ra,sizeof(packet->ra));
-		TAILQ_REMOVE(&g.q.head,packet,list);
+		g.q.head = packet->next;
 		free(packet);
 	}
 	pthread_mutex_unlock(&g.q.lock);
 }
-int process_if(char *ifname) {
+static int process_if(char *ifname) {
 	struct ifaddrs *ifas, *ifa;
 	struct in6_addr *ip;
 	int found = 0;
@@ -443,7 +475,7 @@ int process_if(char *ifname) {
 	return 1;
 }
 
-int usage(char *msg) {
+static int usage(char *msg) {
 	if (msg)
 		_D("ERROR: %s",msg);
 	printf("usage: ra -i ifname(em0) -l prefix_len(64) -p prefix -m mtu(1500) -f flags (read below) -r times(read below) -l advertise_interval(default 30 seconds)\n\n");
