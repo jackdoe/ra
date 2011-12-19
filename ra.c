@@ -49,18 +49,26 @@
 #define ECOPY(a,b) COPY(a,b,ETHER_ADDR_LEN)
 #define ECMP(a,b) CMP(a,b,ETHER_ADDR_LEN)
 #define P_ETH "%02x:%02x:%02x:%02x:%02x:%02x"
-#define P_ETHA(addr) (u8) addr[0],(u8) addr[1],(u8) addr[2],(u8) addr[3],(u8) addr[4],(u8) addr[5]
-#define _DETH(eh) _D("etype:%X shost: " P_ETH " dhost " P_ETH,ntohs(eh.ether_type),P_ETHA(eh.ether_shost),P_ETHA(eh.ether_dhost))
+#define P_ETHA(addr) \
+(u8) addr[0],(u8) addr[1],(u8) addr[2],(u8) addr[3],(u8) addr[4],(u8) addr[5]
+
 
 #ifndef __packed
 #	define __packed __attribute__ ((__packed__))
 #endif
 
-#define _D(fmt,arg...) printf(fmt " [%s():%s:%d]\n", ##arg,__func__,__FILE__,__LINE__)
-#define SAYX(rc,fmt,arg...) do {									\
-	_D(fmt,##arg);													\
-	exit(rc);														\
+#define _D(fmt,arg...) printf(fmt " [%s():%s:%d]\n", 			\
+	##arg,__func__,__FILE__,__LINE__)
+	
+#define SAYX(rc,fmt,arg...) do {					\
+	_D(fmt,##arg);							\
+	exit(rc);							\
 } while(0);
+
+#define _DETH(eh) 							\
+_D("etype:%X shost: " P_ETH " dhost " P_ETH,				\
+ntohs(eh.ether_type),P_ETHA(eh.ether_shost),P_ETHA(eh.ether_dhost))
+
 #ifndef ND_RA_FLAG_HA
 #	define ND_RA_FLAG_HA			0x20
 #endif
@@ -92,7 +100,7 @@
 /* 
  * from libdnet's ip-util.c, read below for license
  */
-#define ip_cksum_carry(x) 										\
+#define ip_cksum_carry(x) 						\
 	    (x = (x >> 16) + (x & 0xffff), (~(x + (x >> 16)) & 0xffff))
 
 typedef uint8_t u8;
@@ -166,11 +174,13 @@ struct global {
 	struct send_queue q;
 };
 static struct global g;
-static u8 all_hosts_in6_addr[] = {0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01};
+static u8 all_hosts_in6_addr[] = {0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,
+				  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01};
 static u8 all_multi_eth_addr[] = {0x33,0x33,0x00,0x00,0x00,0x01};
 static char *m_ether_ntoa(u8 *e);
 static int process_if(char *ifname);
-static void pcap_callback(u_char *user, const struct pcap_pkthdr *h,const u_char *sp);
+static void pcap_callback(u_char *user, const struct pcap_pkthdr *h,
+				const u_char *sp);
 static void *ra_listen(void *v);
 static void *ra_send(void *v);
 static void *ra_generator(void *v);
@@ -209,7 +219,8 @@ int main(int ac, char *av[]) {
 		break;
 		case 'l':
 			v = (u8) atoi(optarg);
-			g.prefix_len = (v > 0 && v <= 64) ? v : usage("bad prefix len: must be > 0 and <= 64");
+			g.prefix_len = (v > 0 && v <= 64) ? v : \
+				usage("bad prefix len: must be > 0 and <= 64");
 		break;
 		case 'm': /* managed */
 			v = (u16) atoi(optarg);
@@ -217,25 +228,31 @@ int main(int ac, char *av[]) {
 		break;
 		case 't':
 			v = (u32) atoi(optarg);
-			g.generator_interval = (v > 0) ? v : usage("bad generator interval: must be > 0");
+			g.generator_interval = (v > 0) ? v : \
+				usage("bad generator interval: must be > 0");
 		break;
 		case 'r':
 			{
 				u32 b[5];
-				/* pi_valid_time:pi_preferred_time:ra_lifetime:ra_reachable:ra_retransmit */
-				if (sscanf(optarg,"%d:%d:%d:%d:%d",&b[0],&b[1],&b[2],&b[3],&b[4]) == 5) {
-					#define valid(idx,var,failmsg) do {					\
-					if (b[idx] > 0) 									\
-						var = b[idx];									\
-					else												\
-						SAYX(1,failmsg);								\
-					} while(0);
-					valid(0,g.pi_valid_time,"ivalid pi_valid_time");
-					valid(1,g.pi_preferred_time,"invalid pi_preferred_time");
-					valid(2,g.ra_lifetime,"invalid ra_lifetime");
-					valid(3,g.ra_reachable,"invalid ra_reachable");
-					valid(4,g.ra_retransmit,"invalid ra_retransmit");
-					#undef valid
+				if (sscanf(optarg,"%d:%d:%d:%d:%d",
+				    &b[0],&b[1],&b[2],&b[3],&b[4]) == 5) {
+				#define valid(idx,var,failmsg) do {	\
+				if (b[idx] > 0) 			\
+					var = b[idx];			\
+				else					\
+					SAYX(EXIT_FAILURE,failmsg);	\
+				} while(0);
+					valid(0,g.pi_valid_time,
+						"pi_valid_time");
+					valid(1,g.pi_preferred_time,
+						"pi_preferred_time");
+					valid(2,g.ra_lifetime,
+						"ra_lifetime");
+					valid(3,g.ra_reachable,
+						"ra_reachable");
+					valid(4,g.ra_retransmit,
+						"ra_retransmit");
+				#undef valid
 				} else {
 					usage("bad time option");
 				}
@@ -245,22 +262,31 @@ int main(int ac, char *av[]) {
 			/* all kinds of flags */
 			#define CLEAR 1
 			#define NOCLEAR 0
-			#define exists(a,flag,var,clear) do { 						\
-				if (strstr(optarg,a) != NULL)	{						\
-					var |= flag;										\
-				} else {												\
-					if (clear)											\
-						var &= ~flag;									\
-				}														\
+			#define exists(a,flag,var,clear) do { 		\
+				if (strstr(optarg,a) != NULL)	{	\
+					var |= flag;			\
+				} else {				\
+					if (clear)			\
+						var &= ~flag;		\
+				}					\
 			} while (0);
 			
-			exists("pi_onlink",ND_OPT_PI_FLAG_ONLINK,g.pi_flags,CLEAR);
-			exists("pi_autonomous", ND_OPT_PI_FLAG_AUTO,g.pi_flags,CLEAR);
-			exists("ra_managed", ND_RA_FLAG_MANAGED,g.ra_flags,CLEAR);
+			exists("pi_onlink",ND_OPT_PI_FLAG_ONLINK,
+				g.pi_flags,CLEAR);
+
+			exists("pi_autonomous", ND_OPT_PI_FLAG_AUTO,
+				g.pi_flags,CLEAR);
+
+			exists("ra_managed", ND_RA_FLAG_MANAGED,
+				g.ra_flags,CLEAR);
 			exists("ra_ha", ND_RA_FLAG_HA,g.ra_flags,CLEAR);			
 			exists("ra_otner", ND_RA_FLAG_OTHER,g.ra_flags,CLEAR);
-			exists("ra_pref_high", ND_RA_FLAG_RTPREF_HIGH,g.ra_flags,NOCLEAR);
-			exists("ra_pref_low", ND_RA_FLAG_RTPREF_LOW,g.ra_flags,NOCLEAR);
+
+			exists("ra_pref_high", ND_RA_FLAG_RTPREF_HIGH,
+				g.ra_flags,NOCLEAR);
+
+			exists("ra_pref_low", ND_RA_FLAG_RTPREF_LOW,
+				g.ra_flags,NOCLEAR);
 			#undef exists
 			#undef CLEAR
 			#undef NOCLEAR
@@ -278,7 +304,7 @@ int main(int ac, char *av[]) {
 	inet_ntop(AF_INET6,&g.prefix,g.sprefix,INET6_ADDRSTRLEN);
 	process_if(g.ifname);
 	init_go_and_die_cleanly();
-	return 0;
+	exit(EXIT_SUCCESS);
 }
 static void init_go_and_die_cleanly(void) {
 	pthread_t t[3];
@@ -287,11 +313,11 @@ static void init_go_and_die_cleanly(void) {
 	pthread_mutex_init(&g.cond_lock,NULL);
 	pthread_cond_init(&g.cond,NULL);
 	if (pthread_create(&t[0],NULL,ra_listen,NULL)) 
-		SAYX(1,"pthread: failed to create thread");
+		SAYX(EXIT_FAILURE,"pthread: failed to create thread");
 	if (pthread_create(&t[1],NULL,ra_send,NULL)) 
-		SAYX(1,"pthread: failed to create thread");
+		SAYX(EXIT_FAILURE,"pthread: failed to create thread");
 	if (pthread_create(&t[2],NULL,ra_generator,NULL)) 
-		SAYX(1,"pthread: failed to create thread");
+		SAYX(EXIT_FAILURE,"pthread: failed to create thread");
 		
 	/* wait for them */
 	for (i=0;i<3;i++) {
@@ -303,7 +329,8 @@ static void init_go_and_die_cleanly(void) {
 }
 static void *ra_listen(void *v) {
 	if (pcap_loop(g.cap, 0, pcap_callback, NULL) < 0)
-		SAYX(1,"pcap_loop(%s): %s", g.ifname, pcap_geterr(g.cap));
+		SAYX(EXIT_FAILURE,"pcap_loop(%s): %s", 
+		     g.ifname, pcap_geterr(g.cap));
 	return NULL;
 }
 
@@ -324,7 +351,8 @@ static void *ra_generator(void *v) {
 	}
 	return NULL;
 }
-static void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
+static void 
+pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
 	if (!sp || h->len < sizeof(struct rs_pkt))
 		return;
 		
@@ -340,12 +368,15 @@ static void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_cha
 static void generate_ra(u8 *edest) {
 	struct sendit *packet = malloc(sizeof(*packet));
 	if (!packet) {
-		_D("not enough mem to allocate: %lu bytes",(unsigned long) sizeof(*packet));
+		_D("not enough mem to allocate: %lu bytes",
+			(unsigned long) sizeof(*packet));
 		return;
 	}
 	bzero(packet,sizeof(*packet));
 	struct ra_pkt *ra = &packet->ra;
-	u16 plen = sizeof(*ra) - sizeof(struct ether_header) - sizeof(struct ip6_hdr);
+	u16 plen = sizeof(*ra) - sizeof(struct ether_header) - 
+		   sizeof(struct ip6_hdr);
+			
 	ECOPY(g.mac,&ra->eh.ether_shost);
 	if (edest) 
 		ECOPY(edest,&ra->eh.ether_dhost);
@@ -364,12 +395,12 @@ static void generate_ra(u8 *edest) {
 	ip->ip6_plen = htons(plen);
 	
 	struct nd_router_advert *radvert = &ra->ra;
-	radvert->nd_ra_type  = ND_ROUTER_ADVERT;
-	radvert->nd_ra_code  = 0;
+	radvert->nd_ra_type = ND_ROUTER_ADVERT;
+	radvert->nd_ra_code = 0;
 	radvert->nd_ra_cksum = 0;
-	radvert->nd_ra_curhoplimit	= 64;
-	radvert->nd_ra_flags_reserved	= g.ra_flags;
-	radvert->nd_ra_router_lifetime	 =  htons(g.ra_lifetime);
+	radvert->nd_ra_curhoplimit = 64;
+	radvert->nd_ra_flags_reserved = g.ra_flags;
+	radvert->nd_ra_router_lifetime = htons(g.ra_lifetime);
 	radvert->nd_ra_reachable  = htonl(g.ra_reachable);
 	radvert->nd_ra_retransmit = htonl(g.ra_retransmit);
 
@@ -384,10 +415,10 @@ static void generate_ra(u8 *edest) {
 	ICOPY(&g.prefix,&pinfo->nd_opt_pi_prefix);
 
 	struct nd_opt_mtu *mtu = &ra->mtu;
-	mtu->nd_opt_mtu_type     = ND_OPT_MTU;
-	mtu->nd_opt_mtu_len      = 1;
+	mtu->nd_opt_mtu_type = ND_OPT_MTU;
+	mtu->nd_opt_mtu_len = 1;
 	mtu->nd_opt_mtu_reserved = 0; 
-	mtu->nd_opt_mtu_mtu      = htonl(g.mtu);
+	mtu->nd_opt_mtu_mtu = htonl(g.mtu);
 	
 	struct nd_opt_lla *lla = &ra->lla;
 	int optlen = sizeof(struct nd_opt_hdr) + ETHER_ADDR_LEN;
@@ -396,13 +427,13 @@ static void generate_ra(u8 *edest) {
 	lla->nd_opt_len = optlen >> 3;;
 	ECOPY(g.mac,lla->mac);
 
-	int sum = ip_cksum_add(radvert, plen, 0) + htons(IPPROTO_ICMPV6 + plen);
+	int sum = ip_cksum_add(radvert, plen, 0) + htons(IPPROTO_ICMPV6 +plen);
 	sum = ip_cksum_add(&ip->ip6_src, 32, sum);
 	radvert->nd_ra_cksum = ip_cksum_carry(sum);	
 	if (g.verbose) {
 		_D("%u: generate reply for prefix: %s/%d (req from: %s)",
 			(unsigned int) time(NULL),g.sprefix,g.prefix_len,
-			(edest ? m_ether_ntoa(edest) : "timed_generator[myself]"));
+			(edest ? m_ether_ntoa(edest) : "timed_generator[me]"));
 	}
 	enqueue(packet);
 }
@@ -447,29 +478,33 @@ static int process_if(char *ifname) {
 	struct bpf_program fp;
 
 	if (!ifname || getifaddrs(&ifas) == -1) 
-		SAYX(1,"failed to process interface: %s",g.ifname);
+		SAYX(EXIT_FAILURE,"failed to process interface: %s",g.ifname);
 	
 	for (ifa = ifas; ifa != NULL; ifa = ifa->ifa_next) {
 		if (strcmp (ifa->ifa_name, g.ifname))
 			continue;
 		if (ifa->ifa_addr->sa_family == AF_INET6) {
-			ip = &((struct sockaddr_in6 *) ifa->ifa_addr)->sin6_addr;
+		#define SIN6 ((struct sockaddr_in6 *) ifa->ifa_addr)
+			ip = &SIN6->sin6_addr;
 			if (IN6_IS_ADDR_LINKLOCAL(ip)) {
 				ICOPY(ip,&g.fe80);
 				found = 1;
 			}
+		#undef SIN6
 		}
 
 #ifdef AF_LINK
 		#define SDL ((struct sockaddr_dl *)ifa->ifa_addr)
-		if (SDL->sdl_family == AF_LINK && SDL->sdl_alen == ETHER_ADDR_LEN) {
+		if (SDL->sdl_family == AF_LINK && 
+		    SDL->sdl_alen == ETHER_ADDR_LEN) {
 			ECOPY(SDL->sdl_data + SDL->sdl_nlen, g.mac);
 		}
 		#undef SDL
 #endif
 #ifdef AF_PACKET
 		if (ifa->ifa_addr->sa_family == AF_PACKET) {
-			struct sockaddr_ll *sl = (struct sockaddr_ll*) ifa->ifa_addr;
+			struct sockaddr_ll *sl = 
+				(struct sockaddr_ll*) ifa->ifa_addr;
 			ECOPY(sl->sll_addr,g.mac);
 		}
 #endif			
@@ -477,13 +512,13 @@ static int process_if(char *ifname) {
 			
 	freeifaddrs(ifas);
 	if (!found) 
-		SAYX(1,"no fe80 found on %s",g.ifname);
+		SAYX(EXIT_FAILURE,"no fe80 found on %s",g.ifname);
   	if ((g.cap = pcap_open_live(g.ifname, 1500, 0, 100, g.errbuf)) == NULL)
-		SAYX(1, "pcap_open_live(): %s", g.errbuf);
+		SAYX(EXIT_FAILURE, "pcap_open_live(): %s", g.errbuf);
 	if (pcap_compile(g.cap, &fp, "icmp6", 0, 0) < 0)
-		SAYX(1,"pcap_compile: %s", pcap_geterr(g.cap));
+		SAYX(EXIT_FAILURE,"pcap_compile: %s", pcap_geterr(g.cap));
 	if (pcap_setfilter(g.cap, &fp) < 0)
-		SAYX(1,"pcap_setfilter: %s", pcap_geterr(g.cap));
+		SAYX(EXIT_FAILURE,"pcap_setfilter: %s", pcap_geterr(g.cap));
 	return 1;
 }
 
