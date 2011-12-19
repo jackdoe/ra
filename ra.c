@@ -329,6 +329,8 @@ static void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_cha
 		return;
 		
 	struct rs_pkt *rs = (struct rs_pkt *) sp;
+	if (ECMP(g.mac,rs->eh.ether_shost)) /* dont process my traffic */
+		return;
 	if (rs->ip.ip6_nxt == IPPROTO_ICMPV6 && 
 	    rs->rs.nd_rs_hdr.icmp6_type == ND_ROUTER_SOLICIT) {
 		generate_ra(rs->eh.ether_shost);
