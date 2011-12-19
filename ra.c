@@ -210,11 +210,11 @@ int main(int ac, char *av[]) {
 	defined (__DragonFly__) || \
 	defined (__OpenBSD__)	|| \
 	defined (__NetBSD__)
-	g.def_ifname = "em0";
+	g.def_ifname = "em1";
 #elif defined(__APPLE__)
-	g.def_ifname = "en0";
+	g.def_ifname = "en1";
 #else
-	g.def_ifname = "eth0";
+	g.def_ifname = "eth1";
 #endif	
 	g.ifname = g.def_ifname;
 	while ((ch = getopt(ac, av, "i:p:l:m:h?t:f:r:v")) != -1) {
@@ -542,10 +542,10 @@ static int usage(char *msg) {
 	printf("usage: ra -i iface -p prefix [-l pref_len -m mtu -f flags]\n");
 	printf("\t\t\t[-r times -l adv_interval]\n\n");
 		
-	printf("example: ra -i %s -p dead:beef:dead:beef::\n",g.def_ifname);
+	printf("example: ra -p dead:beef:dead:beef::\n");
 	printf("will run:\n");
-	printf("\tra -i %s -m 1500 -l 64 -p dead:beef:dead:beef:: ",g.def_ifname);
-	printf("-f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60\n");
+	printf("ra -i %s -m 1500 -l 64 -p dead:beef:dead:beef::",g.def_ifname);
+	printf(" -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60\n");
 		 
 	printf("\nsee RFC 4862 for more info\n");
 	printf("available flags:\n");
