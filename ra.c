@@ -55,8 +55,8 @@
 
 #define _D(fmt,arg...) printf(fmt " [%s():%s:%d]\n", ##arg,__func__,__FILE__,__LINE__)
 #define SAYX(rc,fmt,arg...) do {									\
-	_D(fmt,##arg); 												\
-	exit(rc);													\
+	_D(fmt,##arg); 													\
+	exit(rc);														\
 } while(0);
 #ifndef ND_RA_FLAG_HA
 #	define ND_RA_FLAG_HA			0x20
@@ -221,10 +221,10 @@ int main(int ac, char *av[]) {
 				/* pi_valid_time:pi_preferred_time:ra_lifetime:ra_reachable:ra_retransmit */
 				if (sscanf(optarg,"%d:%d:%d:%d:%d",&b[0],&b[1],&b[2],&b[3],&b[4]) == 5) {
 					#define valid(idx,var,failmsg) do {					\
-					if (b[idx] > 0) 								\
-						var = b[idx];								\
-					else											\
-						SAYX(1,failmsg);							\
+					if (b[idx] > 0) 									\
+						var = b[idx];									\
+					else												\
+						SAYX(1,failmsg);								\
 					} while(0);
 					valid(0,g.pi_valid_time,"ivalid pi_valid_time");
 					valid(1,g.pi_preferred_time,"invalid pi_preferred_time");
@@ -243,11 +243,11 @@ int main(int ac, char *av[]) {
 			#define NOCLEAR 0
 			#define exists(a,flag,var,clear) do { 						\
 				if (strstr(optarg,a) != NULL)	{						\
-					var |= flag;									\
-				} else {											\
-					if (clear)										\
-						var &= ~flag;								\
-				}												\
+					var |= flag;										\
+				} else {												\
+					if (clear)											\
+						var &= ~flag;									\
+				}														\
 			} while (0);
 			
 			exists("pi_onlink",ND_OPT_PI_FLAG_ONLINK,g.pi_flags,CLEAR);
@@ -395,9 +395,7 @@ static void generate_ra(u8 *edest) {
 	radvert->nd_ra_cksum = ip_cksum_carry(sum);	
 	if (g.verbose) {
 		_D("%u: generate reply for prefix: %s/%d (requester: %s)",
-			(unsigned int) time(NULL),
-			g.sprefix,
-			g.prefix_len,
+			(unsigned int) time(NULL),g.sprefix,g.prefix_len,
 			(edest ? ether_ntoa((struct ether_addr *) edest) : "timed_generator[myself]"));
 	}
 	enqueue(packet);
