@@ -3,7 +3,7 @@
 0. compile:
 	requirements: libpcap, pthreads
 	to build it type: gcc -O2 -lpcap -lpthread -o ra ra.c
-	to run it: ./ra -i interface -p prefix -l prefix_len (default 64)
+	to run it: ./ra -i interface -p prefix
 0.1 tested on:
 	freebsd 8,macos x 10-7,linux fedora 13
 
@@ -26,3 +26,16 @@ available times: pi_valid_time:pi_preferred_time:ra_lifetime:ra_reachable:ra_ret
 
 2. examples
 	./ra -i eth0 -p beef:beef:beef:beef::
+
+	aa.. since there is no demon() you can do something like:
+
+	#!/bin/sh
+	echo $$ > /var/run/ra_runner.pid
+	while :; do
+		PREFIX=$(cat /etc/prefix_file_generated_by_dhclient_script_on_PD | tail -1)
+		./ra -i eth0 -p $PREFIX
+	done
+
+	and just do inside your dhclient script
+		echo $PD > /etc/prefix_file_generated_by_dhclient_script_on_PD ; killall ra
+
