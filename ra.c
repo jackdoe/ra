@@ -417,10 +417,10 @@ int process_if(char *ifname) {
 
 int usage(char *msg) {
 	if (msg)
-		_D("ERROR: %s\n",msg);
-	printf("ra -i ifname(em0) -l prefix_len(64) -p prefix -m mtu(1500) -f flags (read below) -r times(read below) -l advertise_interval(default 30 seconds)\n");
-	printf("so if you run ra -p dead:beef:dead:beef:: will run it with:\n");
-	printf("by default the parameters are: ra -i em0 -m 1500 -l 64 -p dead:beef:dead:beef:: -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60\n");
+		_D("ERROR: %s",msg);
+	printf("usage: ra -i ifname(em0) -l prefix_len(64) -p prefix -m mtu(1500) -f flags (read below) -r times(read below) -l advertise_interval(default 30 seconds)\n\n");
+	printf("so if you run\n\tra -p dead:beef:dead:beef::\n");
+	printf("will run:\n\tra -i em0 -m 1500 -l 64 -p dead:beef:dead:beef:: -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60\n");
 	printf("\nsee RFC 4862 for more info\n");
 	printf("available flags: pi_onlink pi_autonomous ra_managed ra_ha ra_other ra_pref_(high|low)\n");
 	printf("\tflags must be in 1 argument eg.: -f \"ra_managed ra_pref_medium pi_onlink\"\n");
