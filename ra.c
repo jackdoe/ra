@@ -48,6 +48,9 @@
 #define ICMP(a,b) CMP(a,b,sizeof(struct in6_addr))
 #define ECOPY(a,b) COPY(a,b,ETHER_ADDR_LEN)
 #define ECMP(a,b) CMP(a,b,ETHER_ADDR_LEN)
+#define P_ETH "%02x:%02x:%02x:%02x:%02x:%02x"
+#define P_ETHA(addr) (u8) addr[0],(u8) addr[1],(u8) addr[2],(u8) addr[3],(u8) addr[4],(u8) addr[5]
+#define _DETH(eh) _D("etype:%X shost: " P_ETH " dhost " P_ETH,ntohs(eh.ether_type),P_ETHA(eh.ether_shost),P_ETHA(eh.ether_dhost))
 
 #ifndef __packed
 #	define __packed __attribute__ ((__packed__))
@@ -55,7 +58,7 @@
 
 #define _D(fmt,arg...) printf(fmt " [%s():%s:%d]\n", ##arg,__func__,__FILE__,__LINE__)
 #define SAYX(rc,fmt,arg...) do {									\
-	_D(fmt,##arg); 													\
+	_D(fmt,##arg);													\
 	exit(rc);														\
 } while(0);
 #ifndef ND_RA_FLAG_HA
@@ -165,7 +168,7 @@ struct global {
 static struct global g;
 static u8 all_hosts_in6_addr[] = {0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01};
 static u8 all_multi_eth_addr[] = {0x33,0x33,0x00,0x00,0x00,0x01};
-
+static char *m_ether_ntoa(u8 *e);
 static int process_if(char *ifname);
 static void pcap_callback(u_char *user, const struct pcap_pkthdr *h,const u_char *sp);
 static void *ra_listen(void *v);
@@ -179,7 +182,8 @@ static int ip_cksum_add(const void *buf, size_t len, int cksum);
 static int usage(char *msg);
 static inline void q_append(struct send_queue *q, struct sendit *packet);
 int main(int ac, char *av[]) {
-	int ch,v;
+	int ch;
+	u32 v;
 	bzero(&g,sizeof(g));
 	g.generator_interval = 30;
 	g.prefix_len = 64;
@@ -192,27 +196,27 @@ int main(int ac, char *av[]) {
 	g.ra_reachable = 60;
 	g.ra_retransmit = 60;
 	g.ifname = "em0";
-	while ((ch = getopt(ac, av, "i:p:lmh?t:f:r:v")) != -1) {
+	while ((ch = getopt(ac, av, "i:p:l:m:h?t:f:r:v")) != -1) {
 		switch(ch) {
 		case 'v':
 			g.verbose++;
 		break;
 		case 'i':
-			g.ifname = strdup(optarg);
+			g.ifname = strdup(optarg); /* XXX */
 		break;
 		case 'p':
 			inet_pton(AF_INET6,optarg,&g.prefix);
 		break;
 		case 'l':
-			v = atoi(optarg);
+			v = (u8) atoi(optarg);
 			g.prefix_len = (v > 0 && v <= 64) ? v : usage("bad prefix len: must be > 0 and <= 64");
 		break;
 		case 'm': /* managed */
-			v = atoi(optarg);
+			v = (u16) atoi(optarg);
 			g.mtu = (v > 0) ? v : usage("bad mtu: must be > 0");
 		break;
 		case 't':
-			v = atoi(optarg);
+			v = (u32) atoi(optarg);
 			g.generator_interval = (v > 0) ? v : usage("bad generator interval: must be > 0");
 		break;
 		case 'r':
@@ -394,11 +398,16 @@ static void generate_ra(u8 *edest) {
 	sum = ip_cksum_add(&ip->ip6_src, 32, sum);
 	radvert->nd_ra_cksum = ip_cksum_carry(sum);	
 	if (g.verbose) {
-		_D("%u: generate reply for prefix: %s/%d (requester: %s)",
+		_D("%u: generate reply for prefix: %s/%d (req from: %s)",
 			(unsigned int) time(NULL),g.sprefix,g.prefix_len,
-			(edest ? ether_ntoa((struct ether_addr *) edest) : "timed_generator[myself]"));
+			(edest ? m_ether_ntoa(edest) : "timed_generator[myself]"));
 	}
 	enqueue(packet);
+}
+static char *m_ether_ntoa(u8 *e) {
+	static char a[] = "xx:xx:xx:xx:xx:xx";
+	sprintf(a, P_ETH, P_ETHA(e));
+	return a;
 }
 
 static inline void q_append(struct send_queue *q, struct sendit *packet) {
