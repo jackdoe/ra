@@ -1,6 +1,6 @@
 
 
-//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef:: -t 1 -r 4294967295:4294967295:80:80:80 {NOTIMEOUT}
+//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef:: -t 1 -r 4294967295:4294967295:80:80:80 -v {NOTIMEOUT}
 /*
  * ----------------------------------------------------------------------------
  * "THE BEER-WARE LICENSE" (Revision 42):
@@ -53,10 +53,7 @@
 #	define __packed __attribute__ ((__packed__))
 #endif
 
-#define P_ETH "%02x:%02x:%02x:%02x:%02x:%02x"
-#define P_ETHARG(addr) (u8) addr[0],(u8) addr[1],(u8) addr[2],(u8) addr[3],(u8) addr[4],(u8) addr[5]
 #define _D(fmt,arg...) printf(fmt " [%s():%s:%d]\n", ##arg,__func__,__FILE__,__LINE__)
-#define _DETH(eh) _D("etype:%X shost: " P_ETH " dhost " P_ETH,ntohs(eh.ether_type),P_ETHARG(eh.ether_shost),P_ETHARG(eh.ether_dhost))
 #define SAYX(rc,fmt,arg...) do {									\
 	_D(fmt,##arg); 												\
 	exit(rc);													\
@@ -149,6 +146,7 @@ struct global {
 
 	struct in6_addr fe80;
 	struct in6_addr prefix;
+	char sprefix[INET6_ADDRSTRLEN];
 	u8 prefix_len;
 	u16 mtu;
 	u32 generator_interval;
@@ -273,7 +271,7 @@ int main(int ac, char *av[]) {
 	
 	if (ICMP(&g.prefix,&in6addr_any)) 
 		usage("need to specify valid ipv6 prefix");
-		
+	inet_ntop(AF_INET6,&g.prefix,g.sprefix,INET6_ADDRSTRLEN);
 	process_if(g.ifname);
 	init_go_and_die_cleanly();
 	return 0;
@@ -329,8 +327,6 @@ static void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_cha
 	struct rs_pkt *rs = (struct rs_pkt *) sp;
 	if (rs->ip.ip6_nxt == IPPROTO_ICMPV6 && 
 	    rs->rs.nd_rs_hdr.icmp6_type == ND_ROUTER_SOLICIT) {
-	    	if (g.verbose)
-	    		_DETH(rs->eh);
 		generate_ra(rs->eh.ether_shost);
 	}
 }
@@ -338,7 +334,7 @@ static void pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_cha
 static void generate_ra(u8 *edest) {
 	struct sendit *packet = malloc(sizeof(*packet));
 	if (!packet) {
-		_D("not enough mem to allocate: %lu bytes",sizeof(*packet));
+		_D("not enough mem to allocate: %lu bytes",(unsigned long) sizeof(*packet));
 		return;
 	}
 	bzero(packet,sizeof(*packet));
@@ -396,7 +392,14 @@ static void generate_ra(u8 *edest) {
 
 	int sum = ip_cksum_add(radvert, plen, 0) + htons(IPPROTO_ICMPV6 + plen);
 	sum = ip_cksum_add(&ip->ip6_src, 32, sum);
-	radvert->nd_ra_cksum = ip_cksum_carry(sum);
+	radvert->nd_ra_cksum = ip_cksum_carry(sum);	
+	if (g.verbose) {
+		_D("%u: generate reply for prefix: %s/%d (requester: %s)",
+			(unsigned int) time(NULL),
+			g.sprefix,
+			g.prefix_len,
+			(edest ? ether_ntoa((struct ether_addr *) edest) : "timed_generator[myself]"));
+	}
 	enqueue(packet);
 }
 
