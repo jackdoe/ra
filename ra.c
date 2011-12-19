@@ -1,6 +1,6 @@
 
 
-//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef:: -t 1 -r 4294967295:4294967295:80:80:80 -v {NOTIMEOUT}
+//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef:: -t 1 -h -r 4294967295:4294967295:80:80:80 -v {NOTIMEOUT}
 /*
  * ----------------------------------------------------------------------------
  * "THE BEER-WARE LICENSE" (Revision 42):
@@ -152,8 +152,9 @@ struct send_queue {
 struct global {
 	u8 mac[ETHER_ADDR_LEN];
 	char *ifname;
+	char *def_ifname;
 	pcap_t *cap;
-	char	errbuf[PCAP_ERRBUF_SIZE];
+	char errbuf[PCAP_ERRBUF_SIZE];
 
 	struct in6_addr fe80;
 	struct in6_addr prefix;
@@ -186,7 +187,7 @@ static void *ra_send(void *v);
 static void *ra_generator(void *v);
 static void enqueue(struct sendit *packet);
 static void process_queue(void);
-static void generate_ra(u8 *edest);
+static void generate_ra(u8 *edest,struct in6_addr *ip6dst);
 static void init_go_and_die_cleanly(void);
 static int ip_cksum_add(const void *buf, size_t len, int cksum);
 static int usage(char *msg);
@@ -205,7 +206,17 @@ int main(int ac, char *av[]) {
 	g.ra_lifetime = 60;
 	g.ra_reachable = 60;
 	g.ra_retransmit = 60;
-	g.ifname = "em0";
+#if 	defined (__FreeBSD__)	|| \
+	defined (__DragonFly__) || \
+	defined (__OpenBSD__)	|| \
+	defined (__NetBSD__)
+	g.def_ifname = "em0";
+#elif defined(__APPLE__)
+	g.def_ifname = "en0";
+#else
+	g.def_ifname = "eth0";
+#endif	
+	g.ifname = g.def_ifname;
 	while ((ch = getopt(ac, av, "i:p:l:m:h?t:f:r:v")) != -1) {
 		switch(ch) {
 		case 'v':
@@ -341,15 +352,15 @@ static void *ra_send(void *v) {
 		pthread_cond_wait(&g.cond,&g.cond_lock);
 		pthread_mutex_unlock(&g.cond_lock);
 	}
-	return NULL;
+	return (NULL);
 }
 
 static void *ra_generator(void *v) {
 	for (;;) {
-		generate_ra(NULL);
+		generate_ra(NULL,NULL);
 		sleep(g.generator_interval);
 	}
-	return NULL;
+	return (NULL);
 }
 static void 
 pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
@@ -361,11 +372,11 @@ pcap_callback(u_char *user, const struct pcap_pkthdr *h, const u_char *sp) {
 		return;
 	if (rs->ip.ip6_nxt == IPPROTO_ICMPV6 && 
 	    rs->rs.nd_rs_hdr.icmp6_type == ND_ROUTER_SOLICIT) {
-		generate_ra(rs->eh.ether_shost);
+		generate_ra(rs->eh.ether_shost,&rs->ip.ip6_src);
 	}
 }
 
-static void generate_ra(u8 *edest) {
+static void generate_ra(u8 *edest,struct in6_addr *ip6dst) {
 	struct sendit *packet = malloc(sizeof(*packet));
 	if (!packet) {
 		_D("not enough mem to allocate: %lu bytes",
@@ -386,7 +397,10 @@ static void generate_ra(u8 *edest) {
 	
 	struct ip6_hdr *ip = &ra->ip;
 	ICOPY(&g.fe80,&ip->ip6_src);
-	ICOPY(all_hosts_in6_addr,&ip->ip6_dst);
+	if (ip6dst)
+		ICOPY(ip6dst,&ip->ip6_dst);
+	else
+		ICOPY(all_hosts_in6_addr,&ip->ip6_dst);
 	ip->ip6_flow = 0;
 	ip->ip6_vfc &= ~IPV6_VERSION_MASK;
 	ip->ip6_vfc |= IPV6_VERSION;
@@ -519,22 +533,33 @@ static int process_if(char *ifname) {
 		SAYX(EXIT_FAILURE,"pcap_compile: %s", pcap_geterr(g.cap));
 	if (pcap_setfilter(g.cap, &fp) < 0)
 		SAYX(EXIT_FAILURE,"pcap_setfilter: %s", pcap_geterr(g.cap));
-	return 1;
+	return(1);
 }
 
 static int usage(char *msg) {
 	if (msg)
 		_D("ERROR: %s",msg);
-	printf("usage: ra -i ifname(em0) -l prefix_len(64) -p prefix -m mtu(1500) -f flags (read below) -r times(read below) -l advertise_interval(default 30 seconds)\n\n");
-	printf("so if you run\n\tra -p dead:beef:dead:beef::\n");
-	printf("will run:\n\tra -i em0 -m 1500 -l 64 -p dead:beef:dead:beef:: -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60\n");
+	printf("usage: ra -i iface -p prefix [-l pref_len -m mtu -f flags]\n");
+	printf("\t\t\t[-r times -l adv_interval]\n\n");
+		
+	printf("example: ra -i %s -p dead:beef:dead:beef::\n",g.def_ifname);
+	printf("will run:\n");
+	printf("\tra -i %s -m 1500 -l 64 -p dead:beef:dead:beef:: ",g.def_ifname);
+	printf("-f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60\n");
+		 
 	printf("\nsee RFC 4862 for more info\n");
-	printf("available flags: pi_onlink pi_autonomous ra_managed ra_ha ra_other ra_pref_(high|low)\n");
-	printf("\tflags must be in 1 argument eg.: -f \"ra_managed ra_pref_medium pi_onlink\"\n");
-	printf("available times: pi_valid_time:pi_preferred_time:ra_lifetime:ra_reachable:ra_retransmit\n");
-	printf("\t must be in 1 argument, and all defined eg.: -r 4294967295:4294967295:60:60:60\n");
-	printf("\t\tpi_valid_time:4294967295 - infinity, specify prefix valid time\n");
-	printf("\t\tpi_preferred_time:4294967295 - infinity, specify prefix preferred time\n");
+	printf("available flags:\n");
+	printf("\tprefix info: pi_onlink pi_autonomous\n");
+	printf("\tra: ra_managed ra_ha ra_other ra_pref_(high|low)\n\n");
+	
+	printf("\tflags must be in 1 argument eg.:\n");
+	printf("\t\t-f \"ra_managed ra_pref_low\"\n");
+	printf("\ttimes: \n");
+	printf("\t\tprefix info: pi_valid_time:pi_preferred_time\n");
+	printf("\t\tra: ra_lifetime:ra_reachable:ra_retransmit\n");
+	printf("\tall times must be in 1 argument, and all defined eg.:\n");
+	printf("\t\t-r 4294967295:4294967295:60:60:60\n");
+	printf("\t4294967295 - infinity (for pi times)\n");
 	exit(1);
 }
 /*---------------------------------------------------------------------------*/
