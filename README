@@ -24,3 +24,5 @@ available times: pi_valid_time:pi_preferred_time:ra_lifetime:ra_reachable:ra_ret
 		pi_valid_time:4294967295 - infinity, specify prefix valid time
 		pi_preferred_time:4294967295 - infinity, specify prefix preferred time
 
+2. examples
+	./ra -i eth0 -p beef:beef:beef:beef::
