@@ -23,7 +23,13 @@
 #include <netinet/ip6.h>
 #include <netinet/icmp6.h>
 #include <net/ethernet.h>
-#include <net/if_dl.h>
+#ifdef AF_LINK
+#	include <net/if_dl.h>
+#endif
+#ifdef AF_PACKET
+#	include <netpacket/packet.h>
+#endif
+
 #include <pcap.h>
 #include <unistd.h>
 #include <strings.h>
@@ -402,18 +408,29 @@ int process_if(char *ifname) {
 	for (ifa = ifas; ifa != NULL; ifa = ifa->ifa_next) {
 		if (strcmp (ifa->ifa_name, g.ifname))
 			continue;
-#define SDL ((struct sockaddr_dl *)ifa->ifa_addr)
-		if (SDL->sdl_family == AF_INET6) {
+		if (ifa->ifa_addr->sa_family == AF_INET6) {
 			ip = &((struct sockaddr_in6 *) ifa->ifa_addr)->sin6_addr;
 			if (IN6_IS_ADDR_LINKLOCAL(ip)) {
 				ICOPY(ip,&g.fe80);
 				found = 1;
 			}
-		} else if (SDL->sdl_family == AF_LINK && SDL->sdl_alen == ETHER_ADDR_LEN) {
+		}
+
+#ifdef AF_LINK
+		#define SDL ((struct sockaddr_dl *)ifa->ifa_addr)
+		if (SDL->sdl_family == AF_LINK && SDL->sdl_alen == ETHER_ADDR_LEN) {
 			ECOPY(SDL->sdl_data + SDL->sdl_nlen, g.mac);
 		}
-	}
-#undef SDL
+		#undef SDL
+#endif
+#ifdef AF_PACKET
+		if (ifa->ifa_addr->sa_family == AF_PACKET) {
+			struct sockaddr_ll *sl = (struct sockaddr_ll*) ifa->ifa_addr;
+			ECOPY(sl->sll_addr,g.mac);
+		}
+#endif			
+	}			
+			
 	freeifaddrs(ifas);
 	if (!found) 
 		SAYX(1,"no fe80 found on %s",g.ifname);
