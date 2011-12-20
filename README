@@ -9,20 +9,26 @@
 
 1. usage:
 
-usage: ra -i ifname(em0) -l prefix_len(64) -p prefix -m mtu(1500) -f flags (read below) -r times(read below) -l advertise_interval(default 30 seconds)
+usage: ra -i iface -p prefix/prefix_len [-m mtu -f flags]
+			[-r times -t adv_interval]
 
-so if you run
-	ra -p dead:beef:dead:beef::
+example: ra -p dead:beef:dead:beef::
 will run:
-	ra -i em0 -m 1500 -l 64 -p dead:beef:dead:beef:: -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60
+ra -i en1 -m 1500 -p dead:beef:dead:beef::/64 -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60
 
 see RFC 4862 for more info
-available flags: pi_onlink pi_autonomous ra_managed ra_ha ra_other ra_pref_(high|low)
-	flags must be in 1 argument eg.: -f "ra_managed ra_pref_medium pi_onlink"
-available times: pi_valid_time:pi_preferred_time:ra_lifetime:ra_reachable:ra_retransmit
-	 must be in 1 argument, and all defined eg.: -r 4294967295:4294967295:60:60:60
-		pi_valid_time:4294967295 - infinity, specify prefix valid time
-		pi_preferred_time:4294967295 - infinity, specify prefix preferred time
+available flags:
+	prefix info: pi_onlink pi_autonomous
+	ra: ra_managed ra_ha ra_other ra_pref_(high|low)
+
+	flags must be in 1 argument eg.:
+		-f "ra_managed ra_pref_low"
+	times: 
+		prefix info: pi_valid_time:pi_preferred_time
+		ra: ra_lifetime:ra_reachable:ra_retransmit
+	all times must be in 1 argument, and all defined eg.:
+		-r 4294967295:4294967295:60:60:60
+	4294967295 - infinity (for pi times)
 
 2. examples
 	./ra -i eth0 -p beef:beef:beef:beef::
