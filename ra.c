@@ -1,6 +1,6 @@
 
 
-//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef::/40 -t 1 -r 4294967295:4294967295:80:80:80 -v {NOTIMEOUT}
+//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef:: -t 1 -r 4294967295:4294967295:80:80:80 -v {NOTIMEOUT}
 /*
  * ----------------------------------------------------------------------------
  * "THE BEER-WARE LICENSE" (Revision 42):
@@ -187,7 +187,7 @@ static void init_go_and_die_cleanly(void);
 static int ip_cksum_add(const void *buf, size_t len, int cksum);
 static int usage(char *msg);
 static inline void q_append(struct send_queue *q, struct sendit *packet);
-void icmp_checksum(struct ra_pkt *ra, u16 plen);
+static void icmp_checksum(struct ra_pkt *ra, u16 plen);
 int main(int ac, char *av[]) {
 	int ch;
 	u32 v;
@@ -608,7 +608,7 @@ static int usage(char *msg) {
 #define ip_cksum_carry(x) 						\
 	    (x = (x >> 16) + (x & 0xffff), (~(x + (x >> 16)) & 0xffff))
 
-void icmp_checksum(struct ra_pkt *ra,u16 plen) {
+static void icmp_checksum(struct ra_pkt *ra,u16 plen) {
 	struct icmp6_hdr *icmp = (struct icmp6_hdr *) &ra->ra;
 	struct ip6_hdr *ip = &ra->ip;
 	icmp->icmp6_cksum = 0;
