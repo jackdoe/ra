@@ -9,12 +9,12 @@
 
 1. usage:
 
-usage: ra -i iface -p prefix [-l pref_len -m mtu -f flags]
-			[-r times -l adv_interval]
+usage: ra -i iface -p prefix/prefix_len [-m mtu -f flags]
+			[-r times -t adv_interval]
 
 example: ra -p dead:beef:dead:beef::
 will run:
-ra -i en1 -m 1500 -l 64 -p dead:beef:dead:beef:: -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60
+ra -i en1 -m 1500 -p dead:beef:dead:beef::/64 -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60
 
 see RFC 4862 for more info
 available flags:
