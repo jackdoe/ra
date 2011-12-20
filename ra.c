@@ -1,6 +1,6 @@
 
 
-//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef:: -t 1 -h -r 4294967295:4294967295:80:80:80 -v {NOTIMEOUT}
+//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef::/40 -t 1 -r 4294967295:4294967295:80:80:80 -v {NOTIMEOUT}
 /*
  * ----------------------------------------------------------------------------
  * "THE BEER-WARE LICENSE" (Revision 42):
@@ -12,7 +12,7 @@
 
 /* 
  * to build it type: gcc -O2 -lpcap -lpthread -o ra ra.c
- * to run it: ./ra -i interface -p prefix -l prefix_len (default 64)
+ * to run it: ./ra -i eth1 -p beef:beef:beef:beef::
  */
 #include <stdio.h>
 #include <stdlib.h> 
@@ -97,11 +97,6 @@ ntohs(eh.ether_type),P_ETHA(eh.ether_shost),P_ETHA(eh.ether_dhost))
 #	define IPV6_VERSION_MASK		0xf0
 #endif
 
-/* 
- * from libdnet's ip-util.c, read below for license
- */
-#define ip_cksum_carry(x) 						\
-	    (x = (x >> 16) + (x & 0xffff), (~(x + (x >> 16)) & 0xffff))
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -192,6 +187,7 @@ static void init_go_and_die_cleanly(void);
 static int ip_cksum_add(const void *buf, size_t len, int cksum);
 static int usage(char *msg);
 static inline void q_append(struct send_queue *q, struct sendit *packet);
+void icmp_checksum(struct ra_pkt *ra, u16 plen);
 int main(int ac, char *av[]) {
 	int ch;
 	u32 v;
@@ -217,7 +213,7 @@ int main(int ac, char *av[]) {
 	g.def_ifname = "eth1";
 #endif	
 	g.ifname = g.def_ifname;
-	while ((ch = getopt(ac, av, "i:p:l:m:h?t:f:r:v")) != -1) {
+	while ((ch = getopt(ac, av, "i:p:m:h?t:f:r:v")) != -1) {
 		switch(ch) {
 		case 'v':
 			g.verbose++;
@@ -226,12 +222,25 @@ int main(int ac, char *av[]) {
 			g.ifname = strdup(optarg); /* XXX */
 		break;
 		case 'p':
-			inet_pton(AF_INET6,optarg,&g.prefix);
-		break;
-		case 'l':
-			v = (u8) atoi(optarg);
-			g.prefix_len = (v > 0 && v <= 64) ? v : \
-				usage("bad prefix len: must be > 0 and <= 64");
+			{
+				char *dup = strdup(optarg);
+				char *p;
+				if (!dup)
+					SAYX(EXIT_FAILURE,
+						"no mem for dup of optarg");
+				p = strchr(dup,'/');
+				if (p) {
+					v = (u8) atoi(p + 1);   
+					if (v > 0 && v <= 64) {
+						g.prefix_len = v;
+					} else {
+						usage("bad prefix len: must "\
+							"be > 0 and <= 64");
+					}
+					*p = '\0';
+				}
+				inet_pton(AF_INET6,dup,&g.prefix);
+			}
 		break;
 		case 'm': /* managed */
 			v = (u16) atoi(optarg);
@@ -438,12 +447,9 @@ static void generate_ra(u8 *edest,struct in6_addr *ip6dst) {
 	int optlen = sizeof(struct nd_opt_hdr) + ETHER_ADDR_LEN;
 	optlen = (optlen + 7) & ~7;
 	lla->nd_opt_type = ND_OPT_SOURCE_LINKADDR;
-	lla->nd_opt_len = optlen >> 3;;
+	lla->nd_opt_len = optlen >> 3;
 	ECOPY(g.mac,lla->mac);
-
-	int sum = ip_cksum_add(radvert, plen, 0) + htons(IPPROTO_ICMPV6 +plen);
-	sum = ip_cksum_add(&ip->ip6_src, 32, sum);
-	radvert->nd_ra_cksum = ip_cksum_carry(sum);	
+	icmp_checksum(ra,plen);
 	if (g.verbose) {
 		_D("%u: generate reply for prefix: %s/%d (req from: %s)",
 			(unsigned int) time(NULL),g.sprefix,g.prefix_len,
@@ -539,12 +545,12 @@ static int process_if(char *ifname) {
 static int usage(char *msg) {
 	if (msg)
 		_D("ERROR: %s",msg);
-	printf("usage: ra -i iface -p prefix [-l pref_len -m mtu -f flags]\n");
-	printf("\t\t\t[-r times -l adv_interval]\n\n");
+	printf("usage: ra -i iface -p prefix/prefix_len -m mtu -f flags]\n");
+	printf("\t\t\t[-r times -t adv_interval]\n\n");
 		
 	printf("example: ra -p dead:beef:dead:beef::\n");
 	printf("will run:\n");
-	printf("ra -i %s -m 1500 -l 64 -p dead:beef:dead:beef::",g.def_ifname);
+	printf("ra -i %s -m 1500 -p dead:beef:dead:beef::/64",g.def_ifname);
 	printf(" -f 'ra_managed' -t 30 -r 4294967295:4294967295:60:60:60\n");
 		 
 	printf("\nsee RFC 4862 for more info\n");
@@ -598,6 +604,18 @@ static int usage(char *msg) {
  *
  * $Id: ip-util.c,v 1.9 2005/02/17 02:55:56 dugsong Exp $
  */
+ 
+#define ip_cksum_carry(x) 						\
+	    (x = (x >> 16) + (x & 0xffff), (~(x + (x >> 16)) & 0xffff))
+
+void icmp_checksum(struct ra_pkt *ra,u16 plen) {
+	struct icmp6_hdr *icmp = (struct icmp6_hdr *) &ra->ra;
+	struct ip6_hdr *ip = &ra->ip;
+	icmp->icmp6_cksum = 0;
+	int sum = ip_cksum_add(icmp, plen, 0) + htons(IPPROTO_ICMPV6 +plen);
+	sum = ip_cksum_add(&ip->ip6_src, 32, sum);
+	icmp->icmp6_cksum = ip_cksum_carry(sum);	
+}
 
 int ip_cksum_add(const void *buf, size_t len, int cksum)
 {
