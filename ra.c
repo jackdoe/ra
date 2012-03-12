@@ -1,6 +1,3 @@
-
-
-//TEXTY_EXECUTE gcc -Wall -O3 -lpcap -lpthread -o {MYDIR}/{MYSELF_BASENAME_NOEXT} {MYSELF} && {MYDIR}/{MYSELF_BASENAME_NOEXT} -i en0 -p  beef:beef:beef:beef:: -t 1 -r 4294967295:4294967295:80:80:80 -v {NOTIMEOUT}
 /*
  * ----------------------------------------------------------------------------
  * "THE BEER-WARE LICENSE" (Revision 42):
